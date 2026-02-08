@@ -14,3 +14,7 @@ Opinionated patterns and reference implementations for building enterprise-grade
 
 ## Roadmap
 See `docs/roadmap.md`.
+
+## Weekly Progress
+- Week 1: Repo structure + baseline documentation
+- Week 2: Security model and permission strategy
