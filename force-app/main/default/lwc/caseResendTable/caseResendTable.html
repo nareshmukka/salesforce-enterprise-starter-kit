@@ -1,0 +1,48 @@
+<template>
+    <div class="slds-p-horizontal_medium slds-p-bottom_medium">
+        <div class="actions slds-p-bottom_x-small">
+            <p class="label">Resend Activity</p>
+            <lightning-button
+                label="Send All"
+                variant="brand"
+                onclick={handleSendAll}
+                disabled={disableSendAll}>
+            </lightning-button>
+        </div>
+        <template lwc:if={hasRows}>
+            <table class="slds-table slds-table_cell-buffer slds-table_bordered">
+                <thead>
+                    <tr class="slds-line-height_reset">
+                        <th scope="col">Label</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Detail</th>
+                        <th scope="col">CloudPage URL</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template for:each={rows} for:item="row">
+                        <tr key={row.rowKey}>
+                            <td>{row.label}</td>
+                            <td>{row.status}</td>
+                            <td>{row.detail}</td>
+                            <td>
+                                <template lwc:if={row.cloudPageUrl}>
+                                    <a href={row.cloudPageUrl} target="_blank" rel="noopener noreferrer">{row.cloudPageUrl}</a>
+                                </template>
+                                <template lwc:else>
+                                    <span>Not available</span>
+                                </template>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </template>
+        <template lwc:else>
+            <div class="slds-text-color_weak">No resend data available.</div>
+        </template>
+        <template lwc:if={statusMessage}>
+            <div class="slds-p-top_small">{statusMessage}</div>
+        </template>
+    </div>
+</template>

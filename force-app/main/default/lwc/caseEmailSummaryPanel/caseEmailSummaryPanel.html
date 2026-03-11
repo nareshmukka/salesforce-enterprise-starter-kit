@@ -1,0 +1,58 @@
+<template>
+    <lightning-card title="Email Resend Workspace" icon-name="standard:case">
+        <template lwc:if={isLoading}>
+            <div class="slds-p-around_medium">
+                <lightning-spinner size="small"></lightning-spinner>
+            </div>
+        </template>
+
+        <template lwc:elseif={errorMessage}>
+            <div class="slds-p-around_medium slds-text-color_error">{errorMessage}</div>
+        </template>
+
+        <template lwc:elseif={viewModel}>
+            <template lwc:if={viewModel.manualReviewRequired}>
+                <div class="banner slds-p-around_medium slds-m-around_medium">
+                    {viewModel.bannerMessage}
+                </div>
+            </template>
+
+            <div class="slds-p-horizontal_medium slds-p-bottom_small">
+                <p class="label">Summary</p>
+                <p>{summaryText}</p>
+            </div>
+
+            <div class="slds-p-horizontal_medium slds-p-bottom_small">
+                <p class="label">History Summary</p>
+                <p>{historySummaryText}</p>
+            </div>
+
+            <div class="slds-p-horizontal_medium slds-p-bottom_small grid">
+                <div>
+                    <p class="label">Intent</p>
+                    <p>{intentText}</p>
+                </div>
+                <div>
+                    <p class="label">Status</p>
+                    <p>{viewModel.status}</p>
+                </div>
+                <div>
+                    <p class="label">CloudPage URL</p>
+                    <template lwc:if={viewModel.cloudPageUrl}>
+                        <a href={viewModel.cloudPageUrl} target="_blank" rel="noopener noreferrer">{viewModel.cloudPageUrl}</a>
+                    </template>
+                    <template lwc:else>
+                        <span>Not available</span>
+                    </template>
+                </div>
+            </div>
+
+            <c-case-resend-table
+                record-id={recordId}
+                rows={viewModel.resendRows}
+                can-send-all={viewModel.sendAllAvailable}
+                onrefreshrequested={handleRefreshRequested}>
+            </c-case-resend-table>
+        </template>
+    </lightning-card>
+</template>
