@@ -1,73 +1,41 @@
 /**
- * Description: Provides placeholder configuration values for agent and SFMC integrations.
+ * Description: Provides centralized resend configuration for trigger-path processing.
  * Developer: Naresh
  * Title: Senior Salesforce Developer
  */
-public class ResendConfiguration {
+public with sharing class ResendConfiguration {
     /**
-     * Description: Wrapper for integration configuration values used by the resend workflow.
+     * Description: Runtime configuration for resend automation.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
     public class Config {
-        public String agentName;
-        public String agentNamedCredential;
-        public String agentPath;
-        public String sfmcNamedCredential;
-        public String standardResendPath;
-        public String resendToNewEmailPath;
-        public String sendAllPath;
+        public String agentApiName;
+        public String agentActionApiName;
         public String supportedInboundAddressRegex;
         public String confirmationNumberRegex;
-        public Integer requestTimeoutMs;
+        public String sfmcNamedCredential;
+        public String sfmcStandardEndpoint;
+        public String sfmcAlternateEndpoint;
+        public String sfmcSendAllEndpoint;
     }
 
-    @TestVisible
-    private static Config overrideConfig;
-
     /**
-     * Description: Returns the active resend configuration with placeholder integration values.
-     * @return Config Active configuration values.
+     * Description: Returns the active resend configuration.
+     * @return Config Current runtime configuration values.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
     public static Config getConfig() {
-        if (overrideConfig != null) {
-            return overrideConfig;
-        }
-
         Config config = new Config();
-        config.agentName = 'Replace_With_Agentforce_Agent_Name';
-        config.agentNamedCredential = 'Agentforce_Named_Credential';
-        config.agentPath = '/services/apexrest/agent/placeholder';
+        config.agentApiName = 'Inbound_Email_Resend_Agent';
+        config.agentActionApiName = 'generateAiAgentResponse';
+        config.supportedInboundAddressRegex = '.*';
+        config.confirmationNumberRegex = '(?i)(?:confirmation\\s*(?:number|#)?\\s*[:\\-]?\\s*)([A-Z0-9\\-]+)';
         config.sfmcNamedCredential = 'SFMC_Named_Credential';
-        config.standardResendPath = '/resend/standard';
-        config.resendToNewEmailPath = '/resend/new-email';
-        config.sendAllPath = '/resend/send-all';
-        config.supportedInboundAddressRegex = '(?i).*';
-        config.confirmationNumberRegex = '(?i)\\b(?:confirmation(?:\\s*number)?|conf(?:irmation)?\\s*#?)\\s*[:#-]?\\s*([A-Z0-9-]{5,20})\\b';
-        config.requestTimeoutMs = 20000;
+        config.sfmcStandardEndpoint = '/resend/confirmation';
+        config.sfmcAlternateEndpoint = '/resend/confirmation-with-email';
+        config.sfmcSendAllEndpoint = '/resend/send-all';
         return config;
-    }
-
-    /**
-     * Description: Overrides configuration values for test execution.
-     * @param config Test configuration.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    @TestVisible
-    static void setOverride(Config config) {
-        overrideConfig = config;
-    }
-
-    /**
-     * Description: Clears any test configuration override.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    @TestVisible
-    static void reset() {
-        overrideConfig = null;
     }
 }

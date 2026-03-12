@@ -3,7 +3,7 @@
  * Developer: Naresh
  * Title: Senior Salesforce Developer
  */
-public class InboundEmailProcessingQueueable implements Queueable, Database.AllowsCallouts {
+public with sharing class InboundEmailProcessingQueueable implements Queueable, Database.AllowsCallouts {
     private final List<Id> emailMessageIds;
 
     /**
@@ -26,6 +26,7 @@ public class InboundEmailProcessingQueueable implements Queueable, Database.Allo
         if (emailMessageIds.isEmpty()) {
             return;
         }
+
         new InboundEmailOrchestrator().processEmailMessages(new Set<Id>(emailMessageIds));
     }
 }

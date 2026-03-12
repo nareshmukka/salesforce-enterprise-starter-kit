@@ -1,0 +1,170 @@
+/**
+ * Description: Applies deterministic resend rules to normalized agent output and current case context.
+ * Developer: Naresh
+ * Title: Senior Salesforce Developer
+ */
+public with sharing class ResendIntentRulesEngine {
+    /**
+     * Description: Input used for resend decisioning.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public class DecisionRequest {
+        public Id caseId;
+        public String caseNumber;
+        public String caseSuppliedEmail;
+        public String existingCloudPageUrl;
+        public String inboundEmailBody;
+        public AgentIntegrationService.AgentResult agentResult;
+    }
+
+    /**
+     * Description: Final deterministic resend decision.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public class DecisionResult {
+        public String code;
+        public String status;
+        public String message;
+        public String confirmationNumber;
+        public String newEmailAddress;
+        public String cloudPageUrlCandidate;
+        public Boolean shouldCallSfmc = false;
+        public Boolean shouldSendConfirmationRequest = false;
+    }
+
+    /**
+     * Description: Applies resend rules to the supplied request.
+     * @param request Decision request.
+     * @return DecisionResult Final deterministic outcome.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public static DecisionResult decide(DecisionRequest request) {
+        DecisionResult result = new DecisionResult();
+        AgentIntegrationService.AgentResult agentResult = request.agentResult;
+
+        result.cloudPageUrlCandidate = firstNonBlank(
+            request.existingCloudPageUrl,
+            extractCloudPageUrl(request.inboundEmailBody)
+        );
+
+        if (agentResult == null || agentResult.intent == 'NONE') {
+            result.code = 'NOT_RESEND';
+            result.status = 'NO_ACTION';
+            result.message = 'Inbound email does not meet resend automation criteria.';
+            return result;
+        }
+
+        if (agentResult.intent == 'SEND_ALL') {
+            result.code = 'SEND_ALL_UI_ONLY';
+            result.status = 'MANUAL_REVIEW';
+            result.message = 'Send All can only be executed from the workspace button.';
+            return result;
+        }
+
+        result.confirmationNumber = parseConfirmationNumber(
+            firstNonBlank(agentResult.confirmationNumber, request.inboundEmailBody)
+        );
+        result.newEmailAddress = parseEmailAddress(
+            firstNonBlank(agentResult.newEmailAddress, request.inboundEmailBody)
+        );
+
+        if (!String.isBlank(result.newEmailAddress) &&
+            result.newEmailAddress == request.caseSuppliedEmail) {
+            result.newEmailAddress = null;
+        }
+
+        if (String.isBlank(result.confirmationNumber)) {
+            result.code = 'NEED_CONFIRMATION';
+            result.status = 'PENDING_INPUT';
+            result.message = 'Confirmation number required before SFMC resend can run.';
+            result.shouldSendConfirmationRequest = true;
+            return result;
+        }
+
+        result.shouldCallSfmc = true;
+        result.status = 'COMPLETED';
+
+        if (!String.isBlank(result.newEmailAddress)) {
+            result.code = 'RESEND_NEW_EMAIL';
+            result.message = 'Resend will use the new email address endpoint.';
+        } else {
+            result.code = 'RESEND_STANDARD';
+            result.message = 'Resend will use the standard confirmation endpoint.';
+        }
+
+        return result;
+    }
+
+    /**
+     * Description: Parses a confirmation number using configured regex.
+     * @param rawText Raw text to inspect.
+     * @return String Confirmation number when detected.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private static String parseConfirmationNumber(String rawText) {
+        if (String.isBlank(rawText)) {
+            return null;
+        }
+
+        Matcher matcher = Pattern.compile(ResendConfiguration.getConfig().confirmationNumberRegex).matcher(rawText);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        for (Integer index = 1; index <= matcher.groupCount(); index++) {
+            String value = matcher.group(index);
+            if (!String.isBlank(value)) {
+                return value.trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Description: Parses the first email address from free-form text.
+     * @param rawText Raw text to inspect.
+     * @return String Email address when detected.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private static String parseEmailAddress(String rawText) {
+        if (String.isBlank(rawText)) {
+            return null;
+        }
+
+        Matcher matcher = Pattern.compile('(?i)\\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,})\\b').matcher(rawText);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    /**
+     * Description: Extracts a CloudPage URL from raw text.
+     * @param rawText Response or email body text.
+     * @return String CloudPage URL.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private static String extractCloudPageUrl(String rawText) {
+        if (String.isBlank(rawText)) {
+            return null;
+        }
+
+        Matcher matcher = Pattern.compile('(?i)https?://[^\\s>\"]*cloudpage[^\\s>\"]*').matcher(rawText);
+        return matcher.find() ? matcher.group(0) : null;
+    }
+
+    /**
+     * Description: Returns the first non-blank value in order.
+     * @param firstValue Primary value.
+     * @param secondValue Secondary value.
+     * @return String First non-blank value.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private static String firstNonBlank(String firstValue, String secondValue) {
+        return String.isBlank(firstValue) ? secondValue : firstValue;
+    }
+}

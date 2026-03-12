@@ -1,0 +1,100 @@
+/**
+ * Description: Agent action that retrieves the current Case and triggering EmailMessage context.
+ * Developer: Naresh
+ * Title: Senior Salesforce Developer
+ */
+public with sharing class GetCurrentCaseEmailContextAction {
+    /**
+     * Description: Request payload for retrieving current case/email context.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public class Request {
+        @InvocableVariable(required=true)
+        public Id caseId;
+
+        @InvocableVariable(required=true)
+        public Id emailMessageId;
+    }
+
+    /**
+     * Description: Response payload returned to the agent.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public class Response {
+        @InvocableVariable public String caseNumber;
+        @InvocableVariable public String caseStatus;
+        @InvocableVariable public String caseSubject;
+        @InvocableVariable public String emailFrom;
+        @InvocableVariable public String emailSubject;
+        @InvocableVariable public String emailBody;
+        @InvocableVariable public Datetime emailCreatedDate;
+    }
+
+    /**
+     * Description: Retrieves current Case and EmailMessage context for agent reasoning.
+     * @param requests Action requests.
+     * @return List<Response> Context responses.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    @InvocableMethod(
+        label='Get Current Case Email Context'
+        description='Retrieves the triggering EmailMessage and basic Case context for agent analysis.'
+    )
+    public static List<Response> execute(List<Request> requests) {
+        List<Response> responses = new List<Response>();
+        if (requests == null || requests.isEmpty()) {
+            return responses;
+        }
+
+        Set<Id> caseIds = new Set<Id>();
+        Set<Id> emailIds = new Set<Id>();
+
+        for (Request request : requests) {
+            if (request.caseId != null) {
+                caseIds.add(request.caseId);
+            }
+            if (request.emailMessageId != null) {
+                emailIds.add(request.emailMessageId);
+            }
+        }
+
+        Map<Id, Case> casesById = new Map<Id, Case>([
+            SELECT Id, CaseNumber, Status, Subject
+            FROM Case
+            WHERE Id IN :caseIds
+        ]);
+
+        Map<Id, EmailMessage> emailsById = new Map<Id, EmailMessage>([
+            SELECT Id, FromAddress, Subject, TextBody, CreatedDate
+            FROM EmailMessage
+            WHERE Id IN :emailIds
+        ]);
+
+        for (Request request : requests) {
+            Response response = new Response();
+
+            Case supportCase = casesById.get(request.caseId);
+            EmailMessage email = emailsById.get(request.emailMessageId);
+
+            if (supportCase != null) {
+                response.caseNumber = supportCase.CaseNumber;
+                response.caseStatus = supportCase.Status;
+                response.caseSubject = supportCase.Subject;
+            }
+
+            if (email != null) {
+                response.emailFrom = email.FromAddress;
+                response.emailSubject = email.Subject;
+                response.emailBody = email.TextBody;
+                response.emailCreatedDate = email.CreatedDate;
+            }
+
+            responses.add(response);
+        }
+
+        return responses;
+    }
+}

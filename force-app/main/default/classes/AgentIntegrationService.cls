@@ -1,45 +1,35 @@
 /**
- * Description: Handles placeholder Agentforce request and response JSON processing for inbound email analysis.
+ * Description: Invokes the Agentforce agent for inbound email analysis and normalizes the JSON response.
  * Developer: Naresh
  * Title: Senior Salesforce Developer
  */
-public class AgentIntegrationService {
+public with sharing class AgentIntegrationService {
     @TestVisible
     static String mockResponseJson;
+
     @TestVisible
-    static String lastRequestJson;
+    static String lastUserMessage;
 
     /**
-     * Description: Agent request payload sent to the placeholder agent integration point.
+     * Description: Minimal request payload sent to the agent so it can retrieve context through actions.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
-    public class AgentRequest {
-        public String agentName;
+    public class AgentInvocationRequest {
+        public String agentApiName;
         public Id caseId;
         public Id emailMessageId;
-        public String subject;
-        public String body;
-        public List<EmailHistoryEntry> history;
+        public String userMessage;
     }
 
     /**
-     * Description: Historical email entry included in the agent request payload.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    public class EmailHistoryEntry {
-        public String subject;
-        public String body;
-    }
-
-    /**
-     * Description: Normalized agent response used by the workspace and resend rules.
+     * Description: Normalized agent response used by resend rules and UI aggregation.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
     public class AgentResult {
         @AuraEnabled public String summary;
+        @AuraEnabled public String historySummary;
         @AuraEnabled public String category;
         @AuraEnabled public String intent;
         @AuraEnabled public String confirmationNumber;
@@ -71,61 +61,67 @@ public class AgentIntegrationService {
     }
 
     /**
-     * Description: Builds the agent request JSON payload using inbound email context.
-     * @param context Orchestrator context for the inbound email.
-     * @return String JSON payload for the placeholder agent integration point.
+     * Description: Builds the minimal agent request JSON used for trigger-path invocation.
+     * @param caseId Parent Case id.
+     * @param emailMessageId Triggering EmailMessage id.
+     * @return String JSON request payload.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
-    public String buildRequestJson(InboundEmailOrchestrator.ContextData context) {
-        AgentRequest request = new AgentRequest();
-        request.agentName = config.agentName;
-        request.caseId = context.caseId;
-        request.emailMessageId = context.triggerEmailMessageId;
-        request.subject = context.triggerEmail == null ? null : context.triggerEmail.subject;
-        request.body = context.triggerEmail == null ? null : context.triggerEmail.textBody;
-        request.history = new List<EmailHistoryEntry>();
-
-        for (InboundEmailOrchestrator.EmailData emailData : context.emailHistory) {
-            EmailHistoryEntry entry = new EmailHistoryEntry();
-            entry.subject = emailData.subject;
-            entry.body = emailData.textBody;
-            request.history.add(entry);
-        }
-
+    public String buildRequestJson(Id caseId, Id emailMessageId) {
+        AgentInvocationRequest request = new AgentInvocationRequest();
+        request.agentApiName = config.agentApiName;
+        request.caseId = caseId;
+        request.emailMessageId = emailMessageId;
+        request.userMessage = buildUserMessage(caseId, emailMessageId);
         return JSON.serialize(request);
     }
 
     /**
-     * Description: Invokes the placeholder agent integration point and returns response JSON.
+     * Description: Invokes the configured agent and returns the raw response JSON.
      * @param requestJson JSON request payload.
-     * @return String JSON response payload.
+     * @return String Raw JSON response payload from the agent.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
     public String invokeAgent(String requestJson) {
-        lastRequestJson = requestJson;
         if (!String.isBlank(mockResponseJson)) {
             return mockResponseJson;
         }
 
         Map<String, Object> requestMap = (Map<String, Object>) JSON.deserializeUntyped(requestJson);
-        String subject = requestMap.containsKey('subject') ? String.valueOf(requestMap.get('subject')) : null;
-        String body = requestMap.containsKey('body') ? String.valueOf(requestMap.get('body')) : null;
+        String userMessage = requestMap.containsKey('userMessage')
+            ? String.valueOf(requestMap.get('userMessage'))
+            : null;
 
-        Map<String, Object> responseMap = new Map<String, Object>{
-            'summary' => 'Customer is asking for resend follow-up.',
-            'category' => detectCategory(subject, body),
-            'intent' => detectIntent(subject, body),
-            'confirmationNumber' => parseConfirmationNumber(body),
-            'newEmailAddress' => parseEmailAddress(body),
-            'confidence' => 0.55
+        lastUserMessage = userMessage;
+
+        /*
+         * TODO:
+         * Replace this neutral fallback with the real Agentforce Invocable Action API call
+         * after the agent + topic + actions are created in the org.
+         *
+         * Current architecture assumption:
+         * - Apex invokes the agent
+         * - Agent retrieves Case + Email history through Apex actions
+         * - LLM summarizes and classifies
+         * - JSON response is returned here
+         */
+
+        Map<String, Object> fallback = new Map<String, Object>{
+            'summary' => 'Agent invocation not wired yet.',
+            'historySummary' => null,
+            'category' => 'Unknown',
+            'intent' => 'NONE',
+            'confirmationNumber' => null,
+            'newEmailAddress' => null,
+            'confidence' => 0
         };
-        return JSON.serialize(responseMap);
+        return JSON.serialize(fallback);
     }
 
     /**
-     * Description: Normalizes agent response JSON into a typed result for rules and UI.
+     * Description: Normalizes raw agent response JSON into a typed result.
      * @param requestJson Original request JSON.
      * @param responseJson Agent response JSON.
      * @return AgentResult Normalized result.
@@ -139,7 +135,8 @@ public class AgentIntegrationService {
 
         if (String.isBlank(responseJson)) {
             result.summary = 'No agent response was returned.';
-            result.category = 'Manual Review';
+            result.historySummary = null;
+            result.category = 'Unknown';
             result.intent = 'NONE';
             result.confidence = 0;
             return result;
@@ -147,119 +144,42 @@ public class AgentIntegrationService {
 
         Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(responseJson);
         result.summary = readString(responseMap, 'summary');
-        result.category = firstNonBlank(readString(responseMap, 'category'), 'General Inquiry');
+        result.historySummary = readString(responseMap, 'historySummary');
+        result.category = firstNonBlank(readString(responseMap, 'category'), 'Unknown');
         result.intent = normalizeIntent(readString(responseMap, 'intent'));
         result.confirmationNumber = readString(responseMap, 'confirmationNumber');
         result.newEmailAddress = readString(responseMap, 'newEmailAddress');
         result.confidence = responseMap.containsKey('confidence') && responseMap.get('confidence') != null
             ? Decimal.valueOf(String.valueOf(responseMap.get('confidence')))
             : 0;
+
         return result;
     }
 
     /**
-     * Description: Clears static test state for the placeholder agent integration.
+     * Description: Resets static test state.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
     @TestVisible
     static void reset() {
         mockResponseJson = null;
-        lastRequestJson = null;
+        lastUserMessage = null;
     }
 
     /**
-     * Description: Returns the heuristic intent when the placeholder agent is used.
-     * @param subject Email subject.
-     * @param body Email body.
-     * @return String Intent code.
+     * Description: Builds the user message passed to the agent invocation entry point.
+     * @param caseId Parent Case id.
+     * @param emailMessageId Triggering EmailMessage id.
+     * @return String User message for the agent.
      * Developer: Naresh
      * Title: Senior Salesforce Developer
      */
-    private String detectIntent(String subject, String body) {
-        String combined = ((subject == null ? '' : subject) + ' ' + (body == null ? '' : body)).toLowerCase();
-        if (combined.contains('send all')) {
-            return 'SEND_ALL';
-        }
-        if (combined.contains('resend') ||
-            combined.contains('send again') ||
-            combined.contains('did not receive') ||
-            combined.contains('missing confirmation')) {
-            return 'RESEND';
-        }
-        return 'NONE';
-    }
-
-    /**
-     * Description: Returns a simple category for placeholder agent responses.
-     * @param subject Email subject.
-     * @param body Email body.
-     * @return String Category label.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    private String detectCategory(String subject, String body) {
-        return detectIntent(subject, body) == 'RESEND' ? 'Resend Request' : 'General Inquiry';
-    }
-
-    /**
-     * Description: Parses a confirmation number from email text.
-     * @param rawText Email text.
-     * @return String Confirmation number when detected.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    private String parseConfirmationNumber(String rawText) {
-        if (String.isBlank(rawText)) {
-            return null;
-        }
-        Matcher matcher = Pattern.compile(config.confirmationNumberRegex).matcher(rawText);
-        if (!matcher.find()) {
-            return null;
-        }
-        for (Integer index = 1; index <= matcher.groupCount(); index++) {
-            String value = matcher.group(index);
-            if (!String.isBlank(value)) {
-                return value.trim();
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Description: Parses an email address from free-form text.
-     * @param rawText Email text.
-     * @return String First detected email address.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    private String parseEmailAddress(String rawText) {
-        if (String.isBlank(rawText)) {
-            return null;
-        }
-        Matcher matcher = Pattern.compile('(?i)\\b([A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,})\\b').matcher(rawText);
-        return matcher.find() ? matcher.group(1).trim() : null;
-    }
-
-    /**
-     * Description: Normalizes intent strings from agent output.
-     * @param rawIntent Raw agent intent value.
-     * @return String Normalized intent code.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    private String normalizeIntent(String rawIntent) {
-        if (String.isBlank(rawIntent)) {
-            return 'NONE';
-        }
-        String normalized = rawIntent.trim().toUpperCase();
-        if (normalized.contains('SEND_ALL')) {
-            return 'SEND_ALL';
-        }
-        if (normalized.contains('RESEND')) {
-            return 'RESEND';
-        }
-        return 'NONE';
+    private String buildUserMessage(Id caseId, Id emailMessageId) {
+        return 'Analyze inbound resend email for caseId=' + String.valueOf(caseId) +
+            ' and emailMessageId=' + String.valueOf(emailMessageId) +
+            '. Retrieve case context and email history using available actions. ' +
+            'Return JSON with summary, historySummary, category, intent, confirmationNumber, newEmailAddress, confidence.';
     }
 
     /**
@@ -271,7 +191,9 @@ public class AgentIntegrationService {
      * Title: Senior Salesforce Developer
      */
     private String readString(Map<String, Object> source, String keyName) {
-        return source.containsKey(keyName) && source.get(keyName) != null ? String.valueOf(source.get(keyName)) : null;
+        return source.containsKey(keyName) && source.get(keyName) != null
+            ? String.valueOf(source.get(keyName))
+            : null;
     }
 
     /**
@@ -284,5 +206,27 @@ public class AgentIntegrationService {
      */
     private String firstNonBlank(String firstValue, String secondValue) {
         return String.isBlank(firstValue) ? secondValue : firstValue;
+    }
+
+    /**
+     * Description: Normalizes intent values from agent JSON output.
+     * @param rawIntent Raw intent value.
+     * @return String Normalized intent code.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private String normalizeIntent(String rawIntent) {
+        if (String.isBlank(rawIntent)) {
+            return 'NONE';
+        }
+
+        String normalized = rawIntent.trim().toUpperCase();
+        if (normalized.contains('SEND_ALL')) {
+            return 'SEND_ALL';
+        }
+        if (normalized.contains('RESEND')) {
+            return 'RESEND';
+        }
+        return 'NONE';
     }
 }
