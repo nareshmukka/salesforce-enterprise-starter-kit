@@ -1,32 +1,65 @@
-/**
- * Description: Executes inbound EmailMessage processing asynchronously so downstream callouts are allowed.
- * Developer: Naresh
- * Title: Senior Salesforce Developer
- */
-public with sharing class InboundEmailProcessingQueueable implements Queueable, Database.AllowsCallouts {
-    private final List<Id> emailMessageIds;
+Topic Name
 
-    /**
-     * Description: Creates the queueable job with the EmailMessage ids to process.
-     * @param emailMessageIds Supported inbound EmailMessage ids.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    public InboundEmailProcessingQueueable(List<Id> emailMessageIds) {
-        this.emailMessageIds = emailMessageIds == null ? new List<Id>() : emailMessageIds.deepClone();
-    }
+Inbound Email Resend Analysis
 
-    /**
-     * Description: Runs async orchestration for the queued EmailMessage ids.
-     * @param context Queueable execution context.
-     * Developer: Naresh
-     * Title: Senior Salesforce Developer
-     */
-    public void execute(QueueableContext context) {
-        if (emailMessageIds.isEmpty()) {
-            return;
-        }
+Classification Description
 
-        new InboundEmailOrchestrator().processEmailMessages(new Set<Id>(emailMessageIds));
-    }
+Use this topic when an inbound email related to a support case needs to be analyzed to determine whether the customer is requesting a resend of a confirmation or notification email. The topic retrieves case context and related email history, summarizes the current request, and extracts structured information required for resend automation.
+
+Scope
+
+This topic analyzes inbound EmailMessage records associated with a Case. It retrieves the triggering email and recent email history, summarizes the customer request, and determines whether the message represents a resend confirmation request. The topic extracts structured data including confirmation number and any new email address provided by the customer. The output is returned in structured JSON so downstream Salesforce automation can determine whether to call an external resend service.
+
+This topic does not send emails, update records, or call external services. It only analyzes the inbound email and produces structured output for automation.
+
+Instructions
+
+You are analyzing an inbound support email associated with a Salesforce Case. Your task is to determine whether the customer is requesting a resend of a confirmation or notification email and return structured information that Salesforce automation can use.
+
+Follow these steps in order.
+
+First, retrieve the current case and triggering email context using the GetCurrentCaseEmailContextAction action. Use the provided caseId and emailMessageId from the conversation context. Do not ask the user for these values.
+
+Second, retrieve recent email history related to the case using the GetRelatedEmailHistoryAction action. Use the provided caseId from the conversation context. Use the returned messages to understand prior communication with the customer.
+
+Third, analyze the triggering inbound email. Determine the customer’s intent and summarize the request. Pay attention to phrases indicating that the customer did not receive a confirmation email or is asking for a message to be sent again.
+
+Fourth, identify whether the customer provided a confirmation number in the message. If a confirmation number is present, extract it exactly as written.
+
+Fifth, determine whether the customer supplied a new email address where the confirmation should be resent. If an email address is present and it differs from the case contact email, extract it.
+
+Sixth, generate two summaries:
+
+A short summary of the current inbound email.
+
+A brief summary of the relevant conversation history.
+
+Finally, return the analysis using the following JSON structure only.
+
+{
+  "summary": "",
+  "historySummary": "",
+  "category": "",
+  "intent": "",
+  "confirmationNumber": "",
+  "newEmailAddress": "",
+  "confidence": 0.0
 }
+
+Use the following guidance when populating fields:
+
+summary: concise explanation of the customer’s request.
+
+historySummary: short explanation of relevant prior messages in the conversation.
+
+category: label such as “Resend Request” or “General Inquiry”.
+
+intent: one of the following values: RESEND, SEND_ALL, NONE.
+
+confirmationNumber: the confirmation number extracted from the message if present.
+
+newEmailAddress: email address provided by the customer if they request the resend to a different email.
+
+confidence: a number between 0 and 1 indicating confidence in the analysis.
+
+Only return valid JSON that matches this schema. Do not include explanations or additional text outside the JSON response.
