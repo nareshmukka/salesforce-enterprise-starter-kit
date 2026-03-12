@@ -1,5 +1,5 @@
 import { LightningElement, api } from 'lwc';
-import sendAll from '@salesforce/apex/FT_CaseEmailWorkspaceController.sendAll';
+import sendAll from '@salesforce/apex/CaseEmailWorkspaceController.sendAll';
 
 export default class CaseResendTable extends LightningElement {
     @api recordId;

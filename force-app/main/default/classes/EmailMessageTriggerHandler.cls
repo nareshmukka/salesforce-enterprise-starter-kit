@@ -1,8 +1,19 @@
-public class FT_EmailMessageTriggerHandler {
+/**
+ * Description: Filters supported inbound EmailMessage records and hands them off for async processing.
+ * Developer: Naresh
+ * Title: Senior Salesforce Developer
+ */
+public class EmailMessageTriggerHandler {
     private static Set<Id> queuedEmailIds = new Set<Id>();
 
+    /**
+     * Description: Handles after insert EmailMessage trigger processing.
+     * @param newRecords Newly inserted EmailMessage records.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
     public static void handleAfterInsert(List<EmailMessage> newRecords) {
-        FT_ResendConfigService.Config config = FT_ResendConfigService.getConfig();
+        ResendConfiguration.Config config = ResendConfiguration.getConfig();
         Set<Id> emailMessageIds = new Set<Id>();
 
         for (EmailMessage record : newRecords) {
@@ -27,9 +38,14 @@ public class FT_EmailMessageTriggerHandler {
         }
 
         queuedEmailIds.addAll(emailMessageIds);
-        System.enqueueJob(new FT_InboundEmailProcessingQueueable(new List<Id>(emailMessageIds)));
+        System.enqueueJob(new InboundEmailProcessingQueueable(new List<Id>(emailMessageIds)));
     }
 
+    /**
+     * Description: Resets the in-transaction queue guard for tests.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
     @TestVisible
     static void reset() {
         queuedEmailIds.clear();

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
-    <fullName>FT_Latest_CloudPage_URL__c</fullName>
+    <fullName>Latest_CloudPage_URL__c</fullName>
     <description>Stores the latest CloudPage URL returned by the SFMC resend workflow.</description>
     <externalId>false</externalId>
     <inlineHelpText>Latest SFMC CloudPage URL returned by the resend workflow.</inlineHelpText>

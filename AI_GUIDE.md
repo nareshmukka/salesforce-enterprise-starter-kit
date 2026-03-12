@@ -159,25 +159,30 @@ A change is done only when **all** applicable checks below pass.
 #### Global Standards
 
 - Names **MUST** be descriptive, stable, and domain-oriented.
-- Names **MUST** use a project prefix for custom artifacts (e.g., `FT_` for Apex class names).
+- Names **MUST** avoid temporary team-specific prefixes unless a package namespace requires them.
 - Abbreviations **SHOULD** be minimized unless industry-standard.
 
 #### Apex
 
-- Classes: `FT_<Domain><Role>` (e.g., `FT_AssignmentService`).
-- Interfaces: `IFT_<Capability>`.
+- Classes: `<Domain><Role>` (e.g., `AssignmentService`).
+- Interfaces: `I<Capability>`.
 - Tests: `<ClassName>Test`.
 - Methods: verbs for actions, nouns for getters/selectors.
+- Apex classes **MUST** include a top-level documentation block with:
+  - Description
+  - Developer: `Naresh`
+  - Title: `Senior Salesforce Developer`
+- Meaningful public/protected/private methods **SHOULD** include concise documentation blocks describing purpose, inputs, outputs, and notable behavior.
 
 #### LWC
 
-- Folder names: lower camel case (e.g., `ftClientDashboard`).
+- Folder names: lower camel case (e.g., `clientDashboard`).
 - JS classes: PascalCase.
 - Public API properties: meaningful `@api` names.
 
 #### Metadata
 
-- Custom Objects/Fields: use clear labels and stable API names.
+- Custom Objects/Fields: use clear labels and stable API names without temporary implementation prefixes.
 - Flows: `<Domain>_<Event>_<Type>` (e.g., `TrainingSession_AfterSave_RecordTriggered`).
 - Validation Rules: `VR_<Object>_<RuleIntent>`.
 - Permission Sets: `PS_<DomainOrRole>`.
@@ -545,14 +550,14 @@ sf project deploy quick --job-id <validatedJobId> --target-org <prodAlias>
 ```apex
 trigger ClientProfileTrigger on Client_Profile__c 
     (before insert, before update, after update) {
-    FT_ClientProfileTriggerHandler.run(
+    ClientProfileTriggerHandler.run(
         Trigger.operationType,
         Trigger.new,
         Trigger.oldMap
     );
 }
 
-public with sharing class FT_ClientProfileTriggerHandler {
+public with sharing class ClientProfileTriggerHandler {
     private static Boolean isRunning = false;
 
     public static void run(
@@ -564,7 +569,7 @@ public with sharing class FT_ClientProfileTriggerHandler {
         isRunning = true;
         try {
             if (op == System.TriggerOperation.BEFORE_UPDATE) {
-                FT_ClientProfileService.applyBusinessRules(newList, oldMap);
+                ClientProfileService.applyBusinessRules(newList, oldMap);
             }
         } finally {
             isRunning = false;
@@ -573,10 +578,32 @@ public with sharing class FT_ClientProfileTriggerHandler {
 }
 ```
 
+#### Apex Documentation Pattern
+
+```apex
+/**
+ * Description: Handles orchestration of inbound EmailMessage processing for resend workflows.
+ * Developer: Naresh
+ * Title: Senior Salesforce Developer
+ */
+public with sharing class InboundEmailOrchestrator {
+    /**
+     * Description: Builds agent request JSON using Case and EmailMessage context.
+     * @param caseId Related Case Id.
+     * @return String JSON payload ready for placeholder or real agent invocation.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public static String buildAgentRequestJson(Id caseId) {
+        return '{}';
+    }
+}
+```
+
 #### CRUD/FLS Guard Pattern
 
 ```apex
-public with sharing class FT_ClientProfileService {
+public with sharing class ClientProfileService {
     public static void updateGoal(Id clientId, String goal) {
         if (!Schema.sObjectType.Client_Profile__c.isUpdateable()) {
             throw new SecurityException('No object update access');
@@ -598,7 +625,7 @@ public with sharing class FT_ClientProfileService {
 #### Callout via Named Credential
 
 ```apex
-public with sharing class FT_RemoteProgramClient {
+public with sharing class RemoteProgramClient {
     public static HttpResponse sendProgram(String payloadJson) {
         HttpRequest req = new HttpRequest();
         req.setMethod('POST');
@@ -621,7 +648,7 @@ public with sharing class FT_RemoteProgramClient {
 ```js
 // smart container: ftClientDashboardContainer.js
 import { LightningElement, wire } from "lwc";
-import getDashboard from "@salesforce/apex/FT_ClientDashboardController.getDashboard";
+import getDashboard from "@salesforce/apex/ClientDashboardController.getDashboard";
 
 export default class FtClientDashboardContainer extends LightningElement {
     state = { data: null, error: null };
@@ -710,15 +737,15 @@ Use custom metadata for non-secret settings (timeouts, feature toggles, endpoint
 
 #### Permission Set Naming
 
-- `PS_FT_Admin`
-- `PS_FT_Trainer`
-- `PS_FT_ReadOnly`
+- `PS_Admin`
+- `PS_Trainer`
+- `PS_ReadOnly`
 
 #### PSG Composition Example
 
-`PSG_FT_Trainer` includes:
-- `PS_FT_Trainer`
-- `PS_FT_ReadOnly`
+`PSG_Trainer` includes:
+- `PS_Trainer`
+- `PS_ReadOnly`
 - Optional muting permission set to remove sensitive permissions for specific cohorts.
 
 ---
@@ -946,7 +973,7 @@ Include rollback strategy.
 ## Notes
 
 - **Version**: 2.0 (Feb 2026)
-- **Team Prefix**: `FT_` (example for Apex classes, flows, metadata)
+- **Naming Standard**: use stable, descriptive names without temporary implementation prefixes
 - **Coverage Minimum**: 75% (Salesforce platform) or team policy
 - **Bulk Test Size**: 200 records
 - **Key Principle**: Plan → Diff → Implement → Test → Deploy with standards enforcement
@@ -1129,4 +1156,3 @@ For future V6-v2 commits, require all of the following in source together:
 - `genAiPlugins/Support_Case_Creation_v2.genAiPlugin-meta.xml`
 - `genAiFunctions/*_v2/*.genAiFunction-meta.xml` for all five v2 functions
 - Explicit invocation targets that point to v2 flow/Apex implementations
-

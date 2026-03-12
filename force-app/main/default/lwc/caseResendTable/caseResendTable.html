@@ -16,6 +16,7 @@
                         <th scope="col">Label</th>
                         <th scope="col">Status</th>
                         <th scope="col">Detail</th>
+                        <th scope="col">New Email</th>
                         <th scope="col">CloudPage URL</th>
                     </tr>
                 </thead>
@@ -25,6 +26,7 @@
                             <td>{row.label}</td>
                             <td>{row.status}</td>
                             <td>{row.detail}</td>
+                            <td>{row.newEmailAddress}</td>
                             <td>
                                 <template lwc:if={row.cloudPageUrl}>
                                     <a href={row.cloudPageUrl} target="_blank" rel="noopener noreferrer">{row.cloudPageUrl}</a>

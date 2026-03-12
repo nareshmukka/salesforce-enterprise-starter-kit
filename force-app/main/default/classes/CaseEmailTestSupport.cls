@@ -1,5 +1,16 @@
 @IsTest
-public class FT_TestSupport {
+/**
+ * Description: Provides shared data builders and callout mocks for inbound email resend tests.
+ * Developer: Naresh
+ * Title: Senior Salesforce Developer
+ */
+public class CaseEmailTestSupport {
+    /**
+     * Description: Creates a Case record for inbound email tests.
+     * @return Case Inserted Case record.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
     public static Case createCaseRecord() {
         Case supportCase = new Case(
             Origin = 'Email',
@@ -11,6 +22,15 @@ public class FT_TestSupport {
         return supportCase;
     }
 
+    /**
+     * Description: Creates an inbound EmailMessage record for the supplied Case.
+     * @param caseId Related Case id.
+     * @param subject Email subject.
+     * @param body Email body.
+     * @return EmailMessage Inserted EmailMessage.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
     public static EmailMessage createInboundEmail(Id caseId, String subject, String body) {
         EmailMessage emailRecord = new EmailMessage(
             ParentId = caseId,
@@ -25,18 +45,32 @@ public class FT_TestSupport {
         return emailRecord;
     }
 
+    /**
+     * Description: Resets static test state for handler, configuration, and agent placeholder services.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
     public static void resetTestState() {
-        FT_EmailMessageTriggerHandler.reset();
-        FT_InboundEmailOrchestrator.reset();
-        FT_ResendConfigService.reset();
+        EmailMessageTriggerHandler.reset();
+        ResendConfiguration.reset();
+        AgentIntegrationService.reset();
     }
 
-    public static FT_ResendConfigService.Config buildTestConfig() {
-        FT_ResendConfigService.Config config = new FT_ResendConfigService.Config();
-        config.sfmcNamedCredential = 'SFMC_NC';
-        config.standardResendPath = '/resend';
-        config.alternateResendPath = '/resend-alt';
-        config.sendAllPath = '/send-all';
+    /**
+     * Description: Builds a placeholder configuration for tests.
+     * @return Config Test configuration.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    public static ResendConfiguration.Config buildTestConfig() {
+        ResendConfiguration.Config config = new ResendConfiguration.Config();
+        config.agentName = 'TestAgent';
+        config.agentNamedCredential = 'Agentforce_Named_Credential';
+        config.agentPath = '/services/apexrest/agent/placeholder';
+        config.sfmcNamedCredential = 'SFMC_Named_Credential';
+        config.standardResendPath = '/resend/standard';
+        config.resendToNewEmailPath = '/resend/new-email';
+        config.sendAllPath = '/resend/send-all';
         config.requestTimeoutMs = 20000;
         config.supportedInboundAddressRegex = '(?i).*';
         config.confirmationNumberRegex = '(?i)\\b(?:confirmation(?:\\s*number)?|conf(?:irmation)?\\s*#?)\\s*[:#-]?\\s*([A-Z0-9-]{5,20})\\b';
