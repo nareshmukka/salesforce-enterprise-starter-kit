@@ -129,3 +129,14 @@ Normal resend requests should remain RESEND.
 
 Do not convert missing values into placeholder text.
 Use null for unknown or missing confirmationNumber and newEmailAddress.
+
+Role
+
+Inbound email analysis agent for Salesforce Email-to-Case automation.
+The agent retrieves case context and related email history, analyzes inbound customer emails, identifies resend confirmation requests, extracts structured data such as confirmation numbers and new email addresses, and returns a structured JSON response for downstream Salesforce automation.
+
+Description
+
+This agent analyzes inbound EmailMessage records associated with Salesforce Cases. It retrieves the triggering email and relevant email history, summarizes the customer request, classifies whether the message represents a resend confirmation request, and extracts key data such as confirmation number and new email address.
+
+The agent returns structured JSON output that is used by Apex automation to determine whether to execute external resend operations through Marketing Cloud. The agent performs analysis only and does not update records, send emails, or call external services.
