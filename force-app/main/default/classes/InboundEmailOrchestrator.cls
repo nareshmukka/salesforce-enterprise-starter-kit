@@ -54,12 +54,23 @@ public without sharing class InboundEmailOrchestrator {
      * Title: Senior Salesforce Developer
      */
     public void processEmailMessages(Set<Id> emailMessageIds) {
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 processEmailMessages START ### emailMessageIds=' + emailMessageIds);
+
         Map<Id, ContextData> contextsByCaseId = loadContextsByTriggerEmailIds(emailMessageIds);
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 contextsByCaseId size ### ' + contextsByCaseId.size());
+
         Map<Id, String> pendingCloudPageUpdates = new Map<Id, String>();
 
         for (ContextData context : contextsByCaseId.values()) {
+            System.debug(LoggingLevel.ERROR,
+                '### ORCH V4 looping context ### caseId=' + context.caseId +
+                ', emailMessageId=' + context.triggerEmailMessageId
+            );
             processContext(context, pendingCloudPageUpdates);
         }
+
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 pendingCloudPageUpdates size ### ' + pendingCloudPageUpdates.size());
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 pendingCloudPageUpdates ### ' + JSON.serialize(pendingCloudPageUpdates));
 
         if (!pendingCloudPageUpdates.isEmpty()) {
             List<Case> casesToUpdate = new List<Case>();
@@ -69,8 +80,13 @@ public without sharing class InboundEmailOrchestrator {
                     Latest_CloudPage_URL__c = pendingCloudPageUpdates.get(caseId)
                 ));
             }
+
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 updating cases ### ' + JSON.serialize(casesToUpdate));
             update casesToUpdate;
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 case update complete ###');
         }
+
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 processEmailMessages END ###');
     }
 
     /**
@@ -81,26 +97,60 @@ public without sharing class InboundEmailOrchestrator {
      * Title: Senior Salesforce Developer
      */
     private void processContext(ContextData context, Map<Id, String> pendingCloudPageUpdates) {
+        System.debug(LoggingLevel.ERROR,
+            '### ORCH V4 processContext START ### caseId=' + context.caseId +
+            ', caseNumber=' + context.caseNumber +
+            ', triggerEmailMessageId=' + context.triggerEmailMessageId +
+            ', triggerEmailFromAddress=' + context.triggerEmailFromAddress
+        );
+
         String requestJson = agentIntegrationService.buildRequestJson(context.caseId, context.triggerEmailMessageId);
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 requestJson ### ' + requestJson);
+
         String responseJson = agentIntegrationService.invokeAgent(requestJson);
-        AgentIntegrationService.AgentResult agentResult = agentIntegrationService.normalizeResponse(requestJson, responseJson);
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 raw responseJson ### ' + responseJson);
 
-        ResendIntentRulesEngine.DecisionRequest decisionRequest = new ResendIntentRulesEngine.DecisionRequest();
-        decisionRequest.caseId = context.caseId;
-        decisionRequest.caseNumber = context.caseNumber;
-        decisionRequest.caseSuppliedEmail = context.caseSuppliedEmail;
-        decisionRequest.existingCloudPageUrl = context.cloudPageUrl;
-        decisionRequest.inboundEmailBody = context.triggerEmailBody;
-        decisionRequest.agentResult = agentResult;
+        AgentIntegrationService.AgentResult agentResult;
+        ResendIntentRulesEngine.DecisionResult decision;
 
-        ResendIntentRulesEngine.DecisionResult decision = ResendIntentRulesEngine.decide(decisionRequest);
+        try {
+            agentResult = agentIntegrationService.normalizeResponse(requestJson, responseJson);
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 AGENT RESULT ### ' + JSON.serialize(agentResult));
+
+            ResendIntentRulesEngine.DecisionRequest decisionRequest = new ResendIntentRulesEngine.DecisionRequest();
+            decisionRequest.caseId = context.caseId;
+            decisionRequest.caseNumber = context.caseNumber;
+            decisionRequest.caseSuppliedEmail = context.caseSuppliedEmail;
+            decisionRequest.existingCloudPageUrl = context.cloudPageUrl;
+            decisionRequest.inboundEmailBody = context.triggerEmailBody;
+            decisionRequest.agentResult = agentResult;
+
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 DECISION REQUEST ### ' + JSON.serialize(decisionRequest));
+
+            decision = ResendIntentRulesEngine.decide(decisionRequest);
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 DECISION RESULT ### ' + JSON.serialize(decision));
+
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 ERROR IN NORMALIZE/DECISION ### ' + ex.getMessage());
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 STACK ### ' + ex.getStackTraceString());
+            return;
+        }
 
         if (decision.shouldSendConfirmationRequest) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 sending confirmation request email ###');
             sendConfirmationRequest(context);
             return;
         }
 
         if (!decision.shouldCallSfmc) {
+            System.debug(LoggingLevel.ERROR,
+                '### ORCH V4 skipping SFMC ### shouldCallSfmc=' + decision.shouldCallSfmc +
+                ', code=' + decision.code +
+                ', confirmationNumber=' + decision.confirmationNumber +
+                ', newEmailAddress=' + decision.newEmailAddress +
+                ', cloudPageUrlCandidate=' + decision.cloudPageUrlCandidate
+            );
+
             if (!String.isBlank(decision.cloudPageUrlCandidate)) {
                 stageCloudPageUrlUpdate(context, decision.cloudPageUrlCandidate, pendingCloudPageUpdates);
             }
@@ -121,11 +171,21 @@ public without sharing class InboundEmailOrchestrator {
             String.valueOf(context.triggerEmailMessageId) + ':' +
             decision.code;
 
-        SfmcResendService.ResponseWrapper sfmcResponse = sfmcResendService.sendResend(sfmcRequest);
-        String cloudPageUrl = firstNonBlank(sfmcResponse.cloudPageUrl, decision.cloudPageUrlCandidate);
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 BEFORE SFMC CALL ### ' + JSON.serialize(sfmcRequest));
 
-        if (!String.isBlank(cloudPageUrl)) {
-            stageCloudPageUrlUpdate(context, cloudPageUrl, pendingCloudPageUpdates);
+        try {
+            SfmcResendService.ResponseWrapper sfmcResponse = sfmcResendService.sendResend(sfmcRequest);
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 AFTER SFMC CALL ### ' + JSON.serialize(sfmcResponse));
+
+            String cloudPageUrl = firstNonBlank(sfmcResponse.cloudPageUrl, decision.cloudPageUrlCandidate);
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 final cloudPageUrl ### ' + cloudPageUrl);
+
+            if (!String.isBlank(cloudPageUrl)) {
+                stageCloudPageUrlUpdate(context, cloudPageUrl, pendingCloudPageUpdates);
+            }
+        } catch (Exception ex) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 ERROR IN SFMC CALL ### ' + ex.getMessage());
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 SFMC STACK ### ' + ex.getStackTraceString());
         }
     }
 
@@ -137,8 +197,11 @@ public without sharing class InboundEmailOrchestrator {
      * Title: Senior Salesforce Developer
      */
     private Map<Id, ContextData> loadContextsByTriggerEmailIds(Set<Id> emailMessageIds) {
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 loadContexts START ### emailMessageIds=' + emailMessageIds);
+
         Map<Id, ContextData> contextsByCaseId = new Map<Id, ContextData>();
         if (emailMessageIds == null || emailMessageIds.isEmpty()) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 loadContexts no emailMessageIds ###');
             return contextsByCaseId;
         }
 
@@ -149,14 +212,25 @@ public without sharing class InboundEmailOrchestrator {
             WHERE Id IN :emailMessageIds
         ]);
 
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 triggerEmailsById size ### ' + triggerEmailsById.size());
+
         for (EmailMessage emailRecord : triggerEmailsById.values()) {
+            System.debug(LoggingLevel.ERROR,
+                '### ORCH V4 trigger email ### Id=' + emailRecord.Id +
+                ', ParentId=' + emailRecord.ParentId +
+                ', FromAddress=' + emailRecord.FromAddress
+            );
+
             if (emailRecord.ParentId != null &&
                 emailRecord.ParentId.getSObjectType() == Case.SObjectType) {
                 caseIds.add(emailRecord.ParentId);
             }
         }
 
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 caseIds ### ' + caseIds);
+
         if (caseIds.isEmpty()) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 no caseIds found ###');
             return contextsByCaseId;
         }
 
@@ -171,6 +245,13 @@ public without sharing class InboundEmailOrchestrator {
             context.caseSuppliedEmail = supportCase.SuppliedEmail;
             context.cloudPageUrl = supportCase.Latest_CloudPage_URL__c;
             contextsByCaseId.put(supportCase.Id, context);
+
+            System.debug(LoggingLevel.ERROR,
+                '### ORCH V4 loaded case context ### caseId=' + context.caseId +
+                ', caseNumber=' + context.caseNumber +
+                ', suppliedEmail=' + context.caseSuppliedEmail +
+                ', existingCloudPageUrl=' + context.cloudPageUrl
+            );
         }
 
         for (EmailMessage emailRecord : triggerEmailsById.values()) {
@@ -181,8 +262,15 @@ public without sharing class InboundEmailOrchestrator {
             context.triggerEmailMessageId = emailRecord.Id;
             context.triggerEmailBody = emailRecord.TextBody;
             context.triggerEmailFromAddress = emailRecord.FromAddress;
+
+            System.debug(LoggingLevel.ERROR,
+                '### ORCH V4 merged email into context ### caseId=' + context.caseId +
+                ', triggerEmailMessageId=' + context.triggerEmailMessageId +
+                ', triggerEmailFromAddress=' + context.triggerEmailFromAddress
+            );
         }
 
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 loadContexts END ### contextsByCaseId size=' + contextsByCaseId.size());
         return contextsByCaseId;
     }
 
@@ -195,15 +283,27 @@ public without sharing class InboundEmailOrchestrator {
      * Title: Senior Salesforce Developer
      */
     private void stageCloudPageUrlUpdate(ContextData context, String cloudPageUrl, Map<Id, String> pendingCloudPageUpdates) {
+        System.debug(LoggingLevel.ERROR,
+            '### ORCH V4 stageCloudPageUrlUpdate START ### caseId=' +
+            (context == null ? null : context.caseId) +
+            ', incomingCloudPageUrl=' + cloudPageUrl
+        );
+
         if (context == null ||
             context.caseId == null ||
             String.isBlank(cloudPageUrl) ||
             context.cloudPageUrl == cloudPageUrl) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 stageCloudPageUrlUpdate skipped ###');
             return;
         }
 
         context.cloudPageUrl = cloudPageUrl;
         pendingCloudPageUpdates.put(context.caseId, cloudPageUrl);
+
+        System.debug(LoggingLevel.ERROR,
+            '### ORCH V4 staged CloudPage URL ### caseId=' + context.caseId +
+            ', cloudPageUrl=' + cloudPageUrl
+        );
     }
 
     /**
@@ -214,7 +314,13 @@ public without sharing class InboundEmailOrchestrator {
      */
     private void sendConfirmationRequest(ContextData context) {
         String targetEmail = firstNonBlank(context.triggerEmailFromAddress, context.caseSuppliedEmail);
+        System.debug(LoggingLevel.ERROR,
+            '### ORCH V4 sendConfirmationRequest ### targetEmail=' + targetEmail +
+            ', caseNumber=' + context.caseNumber
+        );
+
         if (String.isBlank(targetEmail)) {
+            System.debug(LoggingLevel.ERROR, '### ORCH V4 sendConfirmationRequest skipped because targetEmail blank ###');
             return;
         }
 
@@ -223,6 +329,8 @@ public without sharing class InboundEmailOrchestrator {
         message.setSubject('Confirmation number needed for Case ' + context.caseNumber);
         message.setPlainTextBody('We can resend your communication once you reply with the confirmation number.');
         Messaging.sendEmail(new Messaging.SingleEmailMessage[]{ message });
+
+        System.debug(LoggingLevel.ERROR, '### ORCH V4 confirmation request email sent ###');
     }
 
     /**
