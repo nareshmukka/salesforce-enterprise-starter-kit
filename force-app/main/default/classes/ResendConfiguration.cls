@@ -14,10 +14,14 @@ public with sharing class ResendConfiguration {
         public String agentActionApiName;
         public String supportedInboundAddressRegex;
         public String confirmationNumberRegex;
+
         public String sfmcNamedCredential;
         public String sfmcStandardEndpoint;
         public String sfmcAlternateEndpoint;
         public String sfmcSendAllEndpoint;
+
+        // Temporary shared-token-based testing config
+        public String sharedToken;
     }
 
     /**
@@ -32,10 +36,21 @@ public with sharing class ResendConfiguration {
         config.agentActionApiName = 'generateAiAgentResponse';
         config.supportedInboundAddressRegex = '.*';
         config.confirmationNumberRegex = '(?i)(?:confirmation\\s*(?:number|#)?\\s*[:\\-]?\\s*)([A-Z0-9\\-]+)';
+
         config.sfmcNamedCredential = 'SFMC_Named_Credential';
+
+        // Cloud Page URL / resend
         config.sfmcStandardEndpoint = '/resend/confirmation';
+
+        // New email address flow - keep untouched
         config.sfmcAlternateEndpoint = '/resend/confirmation-with-email';
+
+        // Send all emails
         config.sfmcSendAllEndpoint = '/resend/send-all';
+
+        // Temporary testing token - replace later with secure configuration
+        config.sharedToken = 'REPLACE_WITH_SHARED_TOKEN';
+
         return config;
     }
 }
