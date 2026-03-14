@@ -59,3 +59,13 @@ System.debug('INTENT=' + result.intent);
 System.debug('SUMMARY=' + result.summary);
 System.debug('CONFIRMATION=' + result.confirmationNumber);
 System.debug('NEW EMAIL=' + result.newEmailAddress);
+
+
+config.confirmationNumberRegex =
+'(?i)(?:confirmation\\s*(?:number|#)?\\s*[:\\-]?\\s*)?([0-9]{3,}(?:-[0-9]{3,})+)';
+
+result.confirmationNumber = agentResult.confirmationNumber;
+
+if (String.isBlank(result.confirmationNumber)) {
+    result.confirmationNumber = parseConfirmationNumber(request.inboundEmailBody);
+}
