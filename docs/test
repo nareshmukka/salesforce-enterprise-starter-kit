@@ -1,0 +1,25 @@
+SfmcResendService.RequestWrapper req = new SfmcResendService.RequestWrapper();
+req.caseId = '500XXXXXXXXXXXX'; // optional for temp test
+req.caseNumber = '00012345';
+req.emailMessageId = '02sXXXXXXXXXXXX'; // optional for temp test
+req.requesterEmail = 'yourtestemail@example.com';
+req.confirmationNumber = 'ABC123';
+req.idempotencyKey = 'manual-test-1';
+
+SfmcResendService.ResponseWrapper res = new SfmcResendService().sendResend(req);
+System.debug('STATUS=' + res.statusCode);
+System.debug('SUCCESS=' + res.success);
+System.debug('BODY=' + res.responseBody);
+System.debug('CLOUDPAGE=' + res.cloudPageUrl);
+System.debug('ERROR=' + res.errorMessage);
+
+SfmcResendService.RequestWrapper req = new SfmcResendService.RequestWrapper();
+req.requesterEmail = 'yourtestemail@example.com';
+req.confirmationNumber = 'ABC123';
+
+SfmcResendService.ResponseWrapper res = new SfmcResendService().sendAll(req);
+System.debug('STATUS=' + res.statusCode);
+System.debug('SUCCESS=' + res.success);
+System.debug('BODY=' + res.responseBody);
+System.debug('CLOUDPAGE=' + res.cloudPageUrl);
+System.debug('ERROR=' + res.errorMessage);
