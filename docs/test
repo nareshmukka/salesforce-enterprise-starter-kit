@@ -44,3 +44,18 @@ insert em;
 
 System.debug('Inserted Case Id=' + c.Id);
 System.debug('Inserted EmailMessage Id=' + em.Id);
+
+
+
+AgentIntegrationService svc = new AgentIntegrationService();
+String req = svc.buildRequestJson('500XXXXXXXXXXXX', '02sXXXXXXXXXXXX');
+System.debug('REQUEST=' + req);
+
+String raw = svc.invokeAgent(req);
+System.debug('RAW RESPONSE=' + raw);
+
+AgentIntegrationService.AgentResult result = svc.normalizeResponse(req, raw);
+System.debug('INTENT=' + result.intent);
+System.debug('SUMMARY=' + result.summary);
+System.debug('CONFIRMATION=' + result.confirmationNumber);
+System.debug('NEW EMAIL=' + result.newEmailAddress);
