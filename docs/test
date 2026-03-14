@@ -23,3 +23,24 @@ System.debug('SUCCESS=' + res.success);
 System.debug('BODY=' + res.responseBody);
 System.debug('CLOUDPAGE=' + res.cloudPageUrl);
 System.debug('ERROR=' + res.errorMessage);
+
+
+Case c = new Case(
+    Subject = 'Resend test',
+    Status = 'New',
+    Origin = 'Email',
+    SuppliedEmail = 'customer@example.com'
+);
+insert c;
+
+EmailMessage em = new EmailMessage();
+em.ParentId = c.Id;
+em.Incoming = true;
+em.FromAddress = 'customer@example.com';
+em.ToAddress = 'support@example.com';
+em.Subject = 'Please resend my email';
+em.TextBody = 'Hi, please resend. Confirmation number: ABC123';
+insert em;
+
+System.debug('Inserted Case Id=' + c.Id);
+System.debug('Inserted EmailMessage Id=' + em.Id);
