@@ -10,6 +10,9 @@ public with sharing class AgentIntegrationService {
     @TestVisible
     static String lastUserMessage;
 
+    @TestVisible
+    static Map<String, Object> lastOutputParameters;
+
     /**
      * Description: Minimal request payload sent to the agent so it can retrieve context through actions.
      * Developer: Naresh
@@ -20,6 +23,7 @@ public with sharing class AgentIntegrationService {
         public Id caseId;
         public Id emailMessageId;
         public String userMessage;
+        public String sessionId;
     }
 
     /**
@@ -74,6 +78,7 @@ public with sharing class AgentIntegrationService {
         request.caseId = caseId;
         request.emailMessageId = emailMessageId;
         request.userMessage = buildUserMessage(caseId, emailMessageId);
+        request.sessionId = null;
         return JSON.serialize(request);
     }
 
@@ -89,35 +94,61 @@ public with sharing class AgentIntegrationService {
             return mockResponseJson;
         }
 
-        Map<String, Object> requestMap = (Map<String, Object>) JSON.deserializeUntyped(requestJson);
-        String userMessage = requestMap.containsKey('userMessage')
-            ? String.valueOf(requestMap.get('userMessage'))
-            : null;
+        AgentInvocationRequest request =
+            (AgentInvocationRequest) JSON.deserialize(requestJson, AgentInvocationRequest.class);
 
-        lastUserMessage = userMessage;
+        if (request == null) {
+            throw new ApplicationException('Agent request payload is required.');
+        }
+        if (String.isBlank(request.agentApiName)) {
+            throw new ApplicationException('Agent API name is missing from configuration.');
+        }
+        if (String.isBlank(request.userMessage)) {
+            throw new ApplicationException('Agent userMessage is required.');
+        }
 
-        /*
-         * TODO:
-         * Replace this neutral fallback with the real Agentforce Invocable Action API call
-         * after the agent + topic + actions are created in the org.
-         *
-         * Current architecture assumption:
-         * - Apex invokes the agent
-         * - Agent retrieves Case + Email history through Apex actions
-         * - LLM summarizes and classifies
-         * - JSON response is returned here
-         */
+        lastUserMessage = request.userMessage;
 
-        Map<String, Object> fallback = new Map<String, Object>{
-            'summary' => 'Agent invocation not wired yet.',
-            'historySummary' => null,
-            'category' => 'Unknown',
-            'intent' => 'NONE',
-            'confirmationNumber' => null,
-            'newEmailAddress' => null,
-            'confidence' => 0
-        };
-        return JSON.serialize(fallback);
+        System.debug('### ENTER AgentIntegrationService.invokeAgent ###');
+        System.debug('### agentApiName=' + request.agentApiName);
+        System.debug('### caseId=' + request.caseId);
+        System.debug('### emailMessageId=' + request.emailMessageId);
+        System.debug('### userMessage=' + request.userMessage);
+
+        try {
+            Invocable.Action action =
+                Invocable.Action.createCustomAction('generateAiAgentResponse', request.agentApiName);
+
+            action.setInvocationParameter('userMessage', request.userMessage);
+
+            if (!String.isBlank(request.sessionId)) {
+                action.setInvocationParameter('sessionId', request.sessionId);
+            }
+
+            List<Invocable.Action.Result> results = action.invoke();
+            if (results == null || results.isEmpty()) {
+                throw new ApplicationException('Agent invocation returned no results.');
+            }
+
+            Invocable.Action.Result firstResult = results[0];
+            Map<String, Object> outputParameters =
+                firstResult.getOutputParameters() == null
+                ? new Map<String, Object>()
+                : firstResult.getOutputParameters();
+
+            lastOutputParameters = outputParameters;
+
+            System.debug('### outputParameters=' + JSON.serialize(outputParameters));
+
+            String responsePayload = extractAgentResponsePayload(outputParameters);
+            String normalizedPayload = normalizeAgentPayload(responsePayload);
+
+            System.debug('### normalizedPayload=' + normalizedPayload);
+
+            return normalizedPayload;
+        } catch (Exception ex) {
+            throw new ApplicationException('Agent invocation failed: ' + ex.getMessage());
+        }
     }
 
     /**
@@ -142,14 +173,17 @@ public with sharing class AgentIntegrationService {
             return result;
         }
 
-        Map<String, Object> responseMap = (Map<String, Object>) JSON.deserializeUntyped(responseJson);
+        Map<String, Object> responseMap =
+            (Map<String, Object>) JSON.deserializeUntyped(responseJson);
+
         result.summary = readString(responseMap, 'summary');
         result.historySummary = readString(responseMap, 'historySummary');
         result.category = firstNonBlank(readString(responseMap, 'category'), 'Unknown');
         result.intent = normalizeIntent(readString(responseMap, 'intent'));
         result.confirmationNumber = readString(responseMap, 'confirmationNumber');
         result.newEmailAddress = readString(responseMap, 'newEmailAddress');
-        result.confidence = responseMap.containsKey('confidence') && responseMap.get('confidence') != null
+        result.confidence =
+            responseMap.containsKey('confidence') && responseMap.get('confidence') != null
             ? Decimal.valueOf(String.valueOf(responseMap.get('confidence')))
             : 0;
 
@@ -165,6 +199,7 @@ public with sharing class AgentIntegrationService {
     static void reset() {
         mockResponseJson = null;
         lastUserMessage = null;
+        lastOutputParameters = null;
     }
 
     /**
@@ -180,6 +215,156 @@ public with sharing class AgentIntegrationService {
             ' and emailMessageId=' + String.valueOf(emailMessageId) +
             '. Retrieve case context and email history using available actions. ' +
             'Return JSON with summary, historySummary, category, intent, confirmationNumber, newEmailAddress, confidence.';
+    }
+
+    /**
+     * Description: Extracts the primary response payload from agent output parameters.
+     * @param outputParameters Output parameters returned by the invocable action.
+     * @return String Raw response payload.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private String extractAgentResponsePayload(Map<String, Object> outputParameters) {
+        if (outputParameters == null || outputParameters.isEmpty()) {
+            return null;
+        }
+
+        for (String preferredKey : new List<String>{ 'agentResponse', 'response', 'result', 'output', 'value' }) {
+            if (outputParameters.containsKey(preferredKey) && outputParameters.get(preferredKey) != null) {
+                return objectToString(outputParameters.get(preferredKey));
+            }
+        }
+
+        for (Object value : outputParameters.values()) {
+            if (value != null) {
+                return objectToString(value);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Description: Converts any agent output object into a string payload.
+     * @param rawValue Output value.
+     * @return String Serialized or plain string value.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private String objectToString(Object rawValue) {
+        if (rawValue == null) {
+            return null;
+        }
+        if (rawValue instanceof String) {
+            return String.valueOf(rawValue);
+        }
+        return JSON.serialize(rawValue);
+    }
+
+    /**
+     * Description: Converts agent payload into the JSON contract expected by downstream logic.
+     * @param rawPayload Raw payload returned by the agent action.
+     * @return String Normalized JSON string.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private String normalizeAgentPayload(String rawPayload) {
+        if (String.isBlank(rawPayload)) {
+            return JSON.serialize(buildFallbackResult('No agent response was returned.'));
+        }
+
+        String cleanedPayload = stripMarkdownFence(rawPayload);
+
+        try {
+            Object parsed = JSON.deserializeUntyped(cleanedPayload);
+
+            if (parsed instanceof Map<String, Object>) {
+                Map<String, Object> parsedMap = (Map<String, Object>) parsed;
+
+                if (looksLikeFinalAgentResult(parsedMap)) {
+                    return JSON.serialize(parsedMap);
+                }
+
+                if (parsedMap.containsKey('value') && parsedMap.get('value') != null) {
+                    return normalizeAgentPayload(String.valueOf(parsedMap.get('value')));
+                }
+
+                if (parsedMap.containsKey('agentResponse') && parsedMap.get('agentResponse') != null) {
+                    return normalizeAgentPayload(String.valueOf(parsedMap.get('agentResponse')));
+                }
+
+                return JSON.serialize(buildFallbackResult(cleanedPayload));
+            }
+
+            return JSON.serialize(buildFallbackResult(String.valueOf(parsed)));
+        } catch (Exception ex) {
+            return JSON.serialize(buildFallbackResult(cleanedPayload));
+        }
+    }
+
+    /**
+     * Description: Determines whether a parsed map already matches the final downstream contract.
+     * @param parsedMap Parsed response map.
+     * @return Boolean True when the map looks like a final agent result.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private Boolean looksLikeFinalAgentResult(Map<String, Object> parsedMap) {
+        if (parsedMap == null) {
+            return false;
+        }
+
+        return parsedMap.containsKey('summary') ||
+            parsedMap.containsKey('intent') ||
+            parsedMap.containsKey('confirmationNumber') ||
+            parsedMap.containsKey('newEmailAddress') ||
+            parsedMap.containsKey('historySummary');
+    }
+
+    /**
+     * Description: Removes markdown JSON fences from an agent response.
+     * @param rawPayload Raw payload.
+     * @return String Clean payload.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private String stripMarkdownFence(String rawPayload) {
+        String cleaned = rawPayload == null ? null : rawPayload.trim();
+
+        if (String.isBlank(cleaned)) {
+            return cleaned;
+        }
+
+        if (cleaned.startsWith('```json')) {
+            cleaned = cleaned.substring(7).trim();
+        } else if (cleaned.startsWith('```')) {
+            cleaned = cleaned.substring(3).trim();
+        }
+
+        if (cleaned.endsWith('```')) {
+            cleaned = cleaned.substring(0, cleaned.length() - 3).trim();
+        }
+
+        return cleaned;
+    }
+
+    /**
+     * Description: Builds a safe fallback map when agent output is not in the expected format.
+     * @param summaryText Summary text.
+     * @return Map<String, Object> Fallback response map.
+     * Developer: Naresh
+     * Title: Senior Salesforce Developer
+     */
+    private Map<String, Object> buildFallbackResult(String summaryText) {
+        return new Map<String, Object>{
+            'summary' => summaryText,
+            'historySummary' => null,
+            'category' => 'Unknown',
+            'intent' => 'NONE',
+            'confirmationNumber' => null,
+            'newEmailAddress' => null,
+            'confidence' => 0
+        };
     }
 
     /**
